@@ -7,23 +7,27 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: bygg
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Første gang: prosjektet ligger pakket i prosjekt.b64. Pakk det ut og legg filene inn i repoet.
-      - name: Pakk ut prosjektet (bare første gang)
+      # Ny versjon av koden kan leveres pakket i prosjekt.b64. Pakk den ut og legg filene inn i repoet.
+      - name: Pakk ut ny kode (hvis prosjekt.b64 finnes)
         run: |
-          if [ -f prosjekt.b64 ] && [ ! -f settings.gradle.kts ]; then
+          if [ -f prosjekt.b64 ]; then
             base64 -d prosjekt.b64 > /tmp/p.tgz
             tar xzf /tmp/p.tgz --exclude='.github'
             git rm -q prosjekt.b64
             git config user.name "github-actions"
             git config user.email "github-actions@users.noreply.github.com"
             git add -A
-            git commit -m "Legg inn kildekoden til Hørselsprofil"
+            git commit -m "Oppdater kildekoden til Hørselsprofil"
             git push
           fi
 
