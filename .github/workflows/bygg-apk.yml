@@ -1,0 +1,54 @@
+name: Bygg APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Første gang: prosjektet ligger pakket i prosjekt.b64. Pakk det ut og legg filene inn i repoet.
+      - name: Pakk ut prosjektet (bare første gang)
+        run: |
+          if [ -f prosjekt.b64 ] && [ ! -f settings.gradle.kts ]; then
+            base64 -d prosjekt.b64 > /tmp/p.tgz
+            tar xzf /tmp/p.tgz --exclude='.github'
+            git rm -q prosjekt.b64
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add -A
+            git commit -m "Legg inn kildekoden til Hørselsprofil"
+            git push
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Bygg
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Lagre APK som vedlegg til kjøringen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Horselsprofil-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publiser som utgivelse (lett å laste ned på telefonen)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk Horselsprofil.apk
+          gh release delete siste -y --cleanup-tag || true
+          gh release create siste Horselsprofil.apk --title "Siste versjon" --notes "Bygget automatisk fra koden i dette repoet."
