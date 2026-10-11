@@ -43,12 +43,12 @@ Appen tester hørselen på hvert øre med EarPods i ørene og lagrer en lydprofi
 
 ## Bruk
 
-1. **Hørselstest**: gjør den i et stille rom. Appen setter mediavolumet fast på 60 % under testen og setter det tilbake etterpå. Begynn med høyre øre.
-2. **Lydprofil**: forsterkningen regnes ut automatisk. Du kan finjustere hver frekvens for begge ører eller for ett øre om gangen.
-3. **Musikk**: slå på «Bruk lydprofilen på musikk». Hør på noe kjent, og slå bryteren av og på for å høre forskjellen.
-   - Hører du ingen forskjell, slår du på **Reservemetode**. Da virker profilen i apper som sier fra til Android at de spiller lyd, blant annet Spotify. Avspillingen må startes på nytt etter at du har slått den på.
-4. **Mikrofonlytting**: trykk «Start mikrofonlytting». Den fortsetter med skjermen av, og du kan stoppe den fra varselet.
-   - Lyttingen stopper automatisk hvis du trekker ut øreproppene, så telefonhøyttaleren ikke begynner å ule.
+1. **Hørselstest**: gjør den i et stille rom. Appen setter mediavolumet fast på 60 % under testen og setter det tilbake etterpå. Når testen er ferdig, gir du den et navn. Alle tester lagres, og den som er merket «I bruk» styrer profilen.
+2. **Sikkerhetskopi**: «Ta sikkerhetskopi» lager en tekst med alle testene, som du kan sende til deg selv. «Hent sikkerhetskopi» leser den inn igjen.
+3. **Lydprofil**: forsterkningen regnes ut fra testen. Den felles justeringskurven drar du med fingeren. Den gjelder begge ørene og legges oppå testresultatet. Finjustering per øre ligger under «Vis finjustering per øre».
+4. **Musikk**: slå på «Bruk lydprofilen på musikk». Låter det tynt eller skarpt, skru ned «Styrke» eller opp «Bass».
+   - «Alle apper» er standard. Velg «Bare apper som melder fra» bare hvis du ikke hører noen forskjell. Da må avspillingen startes på nytt.
+5. **Mikrofonlytting**: velg mikrofonen på ledningen eller i telefonen, og trykk «Start mikrofonlytting». Den fortsetter med skjermen av, og du kan stoppe den fra varselet.
 
 ## Å vite om
 

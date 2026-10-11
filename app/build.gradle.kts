@@ -11,14 +11,27 @@ android {
         applicationId = "no.descartes.horsel"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    // Fast signeringsnøkkel, så nye versjoner kan installeres over den gamle uten å miste testene.
+    signingConfigs {
+        create("fast") {
+            storeFile = file("horsel.jks")
+            storePassword = "horselsprofil"
+            keyAlias = "horsel"
+            keyPassword = "horselsprofil"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("fast")
+        }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("fast")
         }
     }
 

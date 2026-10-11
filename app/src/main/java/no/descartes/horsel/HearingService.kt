@@ -53,6 +53,7 @@ class HearingService : Service() {
     private var suspended = false
     private var musicWanted = false
     private var lastPerApp = false
+    private var lastMicSource = 0
 
     private val levelPoll = object : Runnable {
         override fun run() {
@@ -108,7 +109,8 @@ class HearingService : Service() {
                 suspended = false
                 val err = mic.start(p)
                 micRunning = err == null
-                micStatus = err ?: "Lytter via mikrofonen på ledningen"
+                micStatus = err ?: micText(p)
+                lastMicSource = p.micSource
             }
             ACTION_MIC_STOP -> {
                 mic.stop()
@@ -121,6 +123,14 @@ class HearingService : Service() {
                 micRunning = false
             }
             else -> suspended = false
+        }
+        // Byttet mikrofon mens lyttingen går: start på nytt med ny inngang.
+        if (micRunning && p.micSource != lastMicSource && intent?.action != ACTION_MIC_START) {
+            mic.stop()
+            val err = mic.start(p)
+            micRunning = err == null
+            micStatus = err ?: micText(p)
+            lastMicSource = p.micSource
         }
         mic.updateProfile(p)
         applyMusic(p)
@@ -139,13 +149,13 @@ class HearingService : Service() {
         }
         musicWanted = want
         lastPerApp = p.musicPerApp
-        // Mikrofonlyttingen har egen behandling: pause musikkprofilen så lyden ikke behandles to ganger.
-        music.setEnabled(!micRunning)
         musicStatus = if (want) music.status else "Av"
     }
 
+    private fun micText(p: Profile) =
+        if (p.micSource == 1) "Lytter via mikrofonen i telefonen" else "Lytter via mikrofonen på ledningen"
+
     private fun applyState() {
-        music.setEnabled(!micRunning)
         var type = 0
         if (micRunning) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         if (musicWanted && music.isActive) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK

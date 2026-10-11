@@ -30,6 +30,9 @@ object AudioDevs {
         return null
     }
 
+    fun phoneMic(am: AudioManager): AudioDeviceInfo? =
+        am.getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
+
     fun headsetIn(am: AudioManager): AudioDeviceInfo? {
         val devs = am.getDevices(AudioManager.GET_DEVICES_INPUTS)
         for (t in IN_PREF) devs.firstOrNull { it.type == t }?.let { return it }

@@ -2,7 +2,9 @@ package no.descartes.horsel
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -13,17 +15,24 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.log10
 import kotlin.math.roundToInt
 
@@ -37,6 +46,7 @@ object Colors {
     val RIGHT = Color.parseColor("#C3313B")
     val LEFT = Color.parseColor("#2552B5")
     val WARN = Color.parseColor("#A45A00")
+    val SOFT = Color.parseColor("#E3EAE8")
 }
 
 class MainActivity : Activity() {
@@ -44,13 +54,17 @@ class MainActivity : Activity() {
     private lateinit var p: Profile
     private lateinit var am: AudioManager
     private val handler = Handler(Looper.getMainLooper())
+    private val dateFmt = SimpleDateFormat("d.M.yyyy HH:mm", Locale("nb", "NO"))
 
     // Visninger som oppdateres
     private lateinit var headsetText: TextView
     private lateinit var chart: ProfileView
+    private lateinit var adjust: AdjustView
+    private lateinit var adjustValues: TextView
     private lateinit var bandBox: LinearLayout
+    private lateinit var earPanel: LinearLayout
+    private lateinit var earToggle: Button
     private lateinit var earButtons: List<Button>
-    private lateinit var musicSwitch: Switch
     private lateinit var musicStatus: TextView
     private lateinit var micButton: Button
     private lateinit var micStatus: TextView
@@ -62,7 +76,7 @@ class MainActivity : Activity() {
     private lateinit var testNow: TextView
     private lateinit var testLevelText: TextView
     private lateinit var testProgress: TextView
-    private lateinit var testInfo: TextView
+    private lateinit var testsBox: LinearLayout
 
     private var editEar = 2 // 0 venstre, 1 høyre, 2 begge
     private var pendingMicStart = false
@@ -76,6 +90,7 @@ class MainActivity : Activity() {
     private var thrL = FloatArray(FREQS.size)
     private var thrR = FloatArray(FREQS.size)
     private var savedVolume = -1
+    private var testVolumePct = 0
 
     private val d get() = resources.displayMetrics.density
     private fun px(v: Int) = (v * d).roundToInt()
@@ -84,7 +99,9 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         p = Profile.load(this)
+        p.save(this) // lagrer eventuell oppgradering av formatet
         window.statusBarColor = Colors.BG
+        @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         volumeControlStream = AudioManager.STREAM_MUSIC
         setContentView(buildUi())
@@ -136,7 +153,7 @@ class MainActivity : Activity() {
         }
 
     private fun styleButton(b: Button, primary: Boolean) {
-        b.backgroundTintList = ColorStateList.valueOf(if (primary) Colors.ACCENT else Color.parseColor("#E3EAE8"))
+        b.backgroundTintList = ColorStateList.valueOf(if (primary) Colors.ACCENT else Colors.SOFT)
         b.setTextColor(if (primary) Color.WHITE else Colors.ACCENT)
     }
 
@@ -147,8 +164,8 @@ class MainActivity : Activity() {
         setOnClickListener { onClick() }
     }
 
-    private fun lp(top: Int = 10, w: Int = LinearLayout.LayoutParams.MATCH_PARENT, weight: Float = 0f) =
-        LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT, weight).apply { topMargin = px(top) }
+    private fun lp(top: Int = 10, w: Int = LinearLayout.LayoutParams.MATCH_PARENT) =
+        LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(top) }
 
     private fun row(vararg views: View) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -159,9 +176,10 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun vbox() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
     private fun card(title: String, step: String? = null): LinearLayout {
-        val c = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val c = vbox().apply {
             setPadding(px(18), px(16), px(18), px(18))
             background = GradientDrawable().apply {
                 setColor(Colors.CARD); cornerRadius = 12 * d; setStroke(px(1), Colors.LINE)
@@ -191,10 +209,7 @@ class MainActivity : Activity() {
                 override fun onStopTrackingTouch(s: SeekBar?) {}
             })
         }
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(t); addView(sb, lp(4))
-        }
+        return vbox().apply { addView(t); addView(sb, lp(4)) }
     }
 
     private fun switch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) = Switch(this).apply {
@@ -204,43 +219,58 @@ class MainActivity : Activity() {
         setOnCheckedChangeListener { _, b -> onChange(b) }
     }
 
+    /** Radioknapper: options er (tittel, forklaring). */
+    private fun choice(options: List<Pair<String, String>>, selected: Int, onChange: (Int) -> Unit) = RadioGroup(this).apply {
+        orientation = RadioGroup.VERTICAL
+        options.forEachIndexed { i, (title, help) ->
+            addView(RadioButton(this@MainActivity).apply {
+                id = View.generateViewId()
+                text = if (help.isEmpty()) title else "$title\n$help"
+                textSize = 17f; setTextColor(Colors.FG)
+                buttonTintList = ColorStateList.valueOf(Colors.ACCENT)
+                minHeight = px(52)
+                setPadding(px(6), px(6), 0, px(6))
+                isChecked = i == selected
+                setOnCheckedChangeListener { _, b -> if (b) onChange(i) }
+            })
+        }
+    }
+
     private fun meter() = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 100; progressTintList = ColorStateList.valueOf(Colors.ACCENT)
     }
 
     private fun buildUi(): View {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(px(16), px(20), px(16), px(40))
-        }
+        val root = vbox().apply { setPadding(px(16), px(20), px(16), px(40)) }
         root.addView(text("Hørselsprofil", 30f, true))
-        root.addView(text("Test hørselen på hvert øre, og bruk resultatet på musikk og når du lytter med mikrofonen på ledningen.", 17f, color = Colors.MUTED), lp(4))
+        root.addView(text("Test hørselen på hvert øre, og bruk resultatet på musikk og når du lytter med mikrofonen.", 17f, color = Colors.MUTED), lp(4))
         headsetText = text("", 17f, true)
         root.addView(headsetText, lp(12))
 
-        /* Hørselstest */
+        /* ---------- Hørselstest ---------- */
         val test = card("Hørselstest", "Trinn 1")
-        testIntro = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        testIntro = vbox()
         testIntro.addView(text("Sitt i et stille rom med EarPods i ørene. Du hører korte pip i ett øre om gangen.\n\nFor hvert pip: trykk «Svakere» til pipet forsvinner, og så «Sterkere» til det så vidt høres igjen. Trykk deretter «Hører så vidt». Det tar 5–10 minutter.", 17f), lp(8))
-        testInfo = text("", 15f, color = Colors.MUTED)
-        testIntro.addView(testInfo, lp(8))
-        testIntro.addView(button("Start hørselstest", true) { startTest() }, lp(12))
+        testIntro.addView(button("Ta en ny hørselstest", true) { startTest() }, lp(12))
+        testIntro.addView(text("Lagrede tester", 18f, true), lp(20))
+        testIntro.addView(text("Testen som er «I bruk» styrer lydprofilen. Du kan bytte mellom tester når du vil.", 15f, color = Colors.MUTED), lp(2))
+        testsBox = vbox()
+        testIntro.addView(testsBox, lp(6))
+        testIntro.addView(row(
+            button("Ta sikkerhetskopi") { exportBackup() },
+            button("Hent sikkerhetskopi") { importBackup() }
+        ), lp(12))
+        testIntro.addView(text("Sikkerhetskopien er tekst du kan sende til deg selv på e-post eller lagre i Disk. Den inneholder alle testene og justeringskurven.", 14f, color = Colors.MUTED), lp(4))
         test.addView(testIntro)
 
-        testPanel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        testPanel = vbox().apply { visibility = View.GONE }
         testNow = text("", 28f, true).apply { gravity = Gravity.CENTER }
         testLevelText = text("", 20f).apply { gravity = Gravity.CENTER; typeface = Typeface.MONOSPACE }
         testProgress = text("", 15f, color = Colors.MUTED).apply { gravity = Gravity.CENTER }
         testPanel.addView(testNow, lp(10))
         testPanel.addView(testLevelText, lp(6))
-        testPanel.addView(row(
-            button("Svakere −5") { changeLevel(-5) },
-            button("Sterkere +5") { changeLevel(5) }
-        ), lp(12))
-        testPanel.addView(row(
-            button("Svakere −1") { changeLevel(-1) },
-            button("Sterkere +1") { changeLevel(1) }
-        ), lp(4))
+        testPanel.addView(row(button("Svakere −5") { changeLevel(-5) }, button("Sterkere +5") { changeLevel(5) }), lp(12))
+        testPanel.addView(row(button("Svakere −1") { changeLevel(-1) }, button("Sterkere +1") { changeLevel(1) }), lp(4))
         testPanel.addView(button("Hører så vidt – neste tone", true) { nextTone(false) }, lp(14))
         testPanel.addView(button("Hører ikke tonen i det hele tatt") { nextTone(true) }, lp(6))
         testPanel.addView(testProgress, lp(10))
@@ -248,44 +278,66 @@ class MainActivity : Activity() {
         test.addView(testPanel)
         root.addView(test, lp(14))
 
-        /* Profil */
+        /* ---------- Profil ---------- */
         val prof = card("Din lydprofil", "Trinn 2")
+        prof.addView(text("Samlet forsterkning per øre", 17f, true), lp(8))
         chart = ProfileView(this)
-        prof.addView(chart, lp(10))
+        prof.addView(chart, lp(6))
         prof.addView(LinearLayout(this).apply {
             addView(text("○ Høyre øre", 15f, true, Colors.RIGHT))
             addView(text("× Venstre øre", 15f, true, Colors.LEFT), LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(18) })
-            addView(text("forsterkning i dB", 15f, color = Colors.MUTED), LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(18) })
+            addView(text("dB", 15f, color = Colors.MUTED), LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(18) })
         }, lp(4))
-        prof.addView(text("Finjuster for:", 17f, true), lp(16))
+
+        prof.addView(text("Felles justering for begge ører", 17f, true), lp(22))
+        prof.addView(text("Dra et punkt opp for mer, ned for mindre. Dra et sted mellom punktene for å flytte hele kurven. Justeringen legges oppå testresultatet.", 15f, color = Colors.MUTED), lp(2))
+        adjust = AdjustView(this)
+        adjust.onChange = { chart.invalidate(); updateAdjustValues() }
+        adjust.onCommit = { profileChanged(false) }
+        prof.addView(adjust, lp(8))
+        adjustValues = text("", 14f, color = Colors.MUTED).apply { typeface = Typeface.MONOSPACE }
+        prof.addView(adjustValues, lp(2))
+        prof.addView(button("Nullstill justeringen") {
+            p.adj = FloatArray(FREQS.size); profileChanged(true)
+        }, lp(8))
+
+        earToggle = button("Vis finjustering per øre") {
+            val show = earPanel.visibility != View.VISIBLE
+            earPanel.visibility = if (show) View.VISIBLE else View.GONE
+            earToggle.text = if (show) "Skjul finjustering per øre" else "Vis finjustering per øre"
+        }
+        prof.addView(earToggle, lp(16))
+        earPanel = vbox().apply { visibility = View.GONE }
+        earPanel.addView(text("Her endrer du testresultatet for ett øre. «Bruk» på en lagret test tar deg tilbake til de opprinnelige verdiene.", 15f, color = Colors.MUTED), lp(8))
         val bBoth = button("Begge") { setEditEar(2) }
         val bL = button("Venstre") { setEditEar(0) }
         val bR = button("Høyre") { setEditEar(1) }
         earButtons = listOf(bL, bR, bBoth)
-        prof.addView(row(bBoth, bL, bR), lp(6))
-        bandBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        prof.addView(bandBox, lp(8))
-        prof.addView(button("Nullstill all forsterkning") {
-            p.gL = FloatArray(FREQS.size); p.gR = FloatArray(FREQS.size); profileChanged(true)
-        }, lp(12))
+        earPanel.addView(row(bBoth, bL, bR), lp(8))
+        bandBox = vbox()
+        earPanel.addView(bandBox, lp(8))
+        prof.addView(earPanel)
         root.addView(prof, lp(14))
 
-        /* Musikk */
+        /* ---------- Musikk ---------- */
         val mus = card("Musikk og annen lyd", "Trinn 3")
-        mus.addView(text("Profilen legges på det du spiller av i Spotify, YouTube, podkaster, radio osv.", 17f, color = Colors.MUTED), lp(6))
-        musicSwitch = switch("Bruk lydprofilen på musikk", p.musicOn) { b -> p.musicOn = b; profileChanged(false) }
-        mus.addView(musicSwitch, lp(10))
-        mus.addView(slider("Styrke", 0, 100, p.musicStrength, { "$it %" }) { v -> p.musicStrength = v; profileChanged(false) }, lp(8))
-        mus.addView(switch("Reservemetode: bare apper som støtter equalizer", p.musicPerApp) { b -> p.musicPerApp = b; profileChanged(false) }, lp(8))
-        mus.addView(text("Slå på reservemetoden bare hvis du ikke hører forskjell med profilen av og på. Da virker den i apper som Spotify, men ikke overalt.", 14f, color = Colors.MUTED), lp(2))
+        mus.addView(text("Legger lydprofilen på det du spiller av: YouTube Music, Spotify, podkaster, radio og video.", 17f, color = Colors.MUTED), lp(6))
+        mus.addView(switch("Bruk lydprofilen på musikk", p.musicOn) { b -> p.musicOn = b; profileChanged(false) }, lp(10))
+        mus.addView(slider("Styrke på profilen", 0, 100, p.musicStrength, { "$it %" }) { v -> p.musicStrength = v; profileChanged(false) }, lp(10))
+        mus.addView(text("Musikk spilles vanligvis sterkere enn tale, og da trengs mindre forsterkning. Låter det skarpt eller tynt, skru ned styrken.", 14f, color = Colors.MUTED), lp(2))
+        mus.addView(slider("Bass", 0, 12, p.musicBass, { if (it > 0) "+$it dB" else "0 dB" }) { v -> p.musicBass = v; profileChanged(false) }, lp(10))
+        mus.addView(text("Hvordan profilen kobles på", 17f, true), lp(16))
+        mus.addView(choice(listOf(
+            "Alle apper (anbefalt)" to "Virker på all lyd telefonen spiller.",
+            "Bare apper som melder fra" to "Reserve hvis «Alle apper» ikke gir noen hørbar forskjell. Virker bare i apper som sier fra til Android når de spiller, og avspillingen må startes på nytt."
+        ), if (p.musicPerApp) 1 else 0) { i -> p.musicPerApp = i == 1; profileChanged(false) }, lp(4))
         musicStatus = text("", 15f, color = Colors.MUTED)
         mus.addView(musicStatus, lp(8))
-        mus.addView(text("Skru gjerne opp telefonvolumet litt: profilen demper lyden totalt sett for å gi plass til forsterkningen uten forvrengning.", 14f, color = Colors.MUTED), lp(6))
         root.addView(mus, lp(14))
 
-        /* Mikrofon */
+        /* ---------- Mikrofon ---------- */
         val mic = card("Lytt med mikrofonen", "Trinn 4")
-        mic.addView(text("Mikrofonen på ledningen fanger opp lyden rundt deg, og appen spiller den forsterket inn i øreproppene. Musikkprofilen settes på pause så lenge dette er på.", 17f, color = Colors.MUTED), lp(6))
+        mic.addView(text("Mikrofonen fanger opp lyden rundt deg, og appen spiller den forsterket inn i øreproppene.", 17f, color = Colors.MUTED), lp(6))
         micButton = button("Start mikrofonlytting", true) { toggleMic() }
         mic.addView(micButton, lp(12))
         micStatus = text("", 15f, color = Colors.MUTED)
@@ -297,13 +349,18 @@ class MainActivity : Activity() {
         mic.addView(meterOut)
         latencyText = text("", 14f, color = Colors.MUTED)
         mic.addView(latencyText, lp(4))
+        mic.addView(text("Mikrofon", 17f, true), lp(14))
+        mic.addView(choice(listOf(
+            "Mikrofonen på ledningen" to "Følger deg rundt. Fanger også opp din egen stemme.",
+            "Mikrofonen i telefonen" to "Legg telefonen nær den som snakker, for eksempel midt på bordet. Gir minst piping."
+        ), p.micSource) { i -> p.micSource = i; profileChanged(false) }, lp(4))
         val sdb: (Int) -> String = { if (it > 0) "+$it dB" else "$it dB" }
         mic.addView(slider("Mikrofonfølsomhet", -12, 24, p.micGain, sdb) { v -> p.micGain = v; profileChanged(false) }, lp(12))
         mic.addView(slider("Volum ut", -30, 12, p.micOut, sdb) { v -> p.micOut = v; profileChanged(false) }, lp(8))
         mic.addView(slider("Styrke på profilen", 0, 100, p.micStrength, { "$it %" }) { v -> p.micStrength = v; profileChanged(false) }, lp(8))
         mic.addView(switch("Demp brå, sterke lyder", p.micComp) { b -> p.micComp = b; profileChanged(false) }, lp(8))
         mic.addView(switch("Demp sus og bakgrunnsstøy", p.micNs) { b -> p.micNs = b; profileChanged(false) }, lp(4))
-        mic.addView(text("Hvis det piper eller uler: senk «Volum ut». EarPods slipper ut litt lyd, og mikrofonen kan fange den opp igjen.", 14f, color = Colors.WARN), lp(10))
+        mic.addView(text("Hvis det piper eller uler: senk «Volum ut», eller bytt til mikrofonen i telefonen.", 14f, color = Colors.WARN), lp(10))
         root.addView(mic, lp(14))
 
         return ScrollView(this).apply {
@@ -316,10 +373,101 @@ class MainActivity : Activity() {
 
     private fun refreshAll() {
         chart.profile = p
+        adjust.profile = p
+        updateAdjustValues()
         setEditEar(editEar)
-        testInfo.text = if (p.thrL != null && p.thrR != null)
-            "Du har en lagret test (tatt ved ${p.testVolumePct} % volum). En ny test erstatter den."
-        else "Ingen test tatt ennå."
+        renderTests()
+    }
+
+    private fun updateAdjustValues() {
+        adjustValues.text = FREQS.indices.joinToString("  ") { i ->
+            val f = FREQS[i]; val v = p.adj[i].roundToInt()
+            (if (f >= 1000) "${f / 1000.0}".removeSuffix(".0") + "k" else "$f") + ":" + (if (v > 0) "+$v" else "$v")
+        }
+    }
+
+    private fun renderTests() {
+        testsBox.removeAllViews()
+        if (p.tests.isEmpty()) {
+            testsBox.addView(text("Ingen lagrede tester ennå.", 16f, color = Colors.MUTED))
+            return
+        }
+        p.tests.withIndex().reversed().forEach { (i, t) ->
+            val inUse = i == p.activeTest
+            val box = vbox().apply {
+                setPadding(px(12), px(10), px(12), px(10))
+                background = GradientDrawable().apply {
+                    setColor(if (inUse) Color.parseColor("#E6F2EF") else Colors.CARD)
+                    cornerRadius = 8 * d; setStroke(px(if (inUse) 2 else 1), if (inUse) Colors.ACCENT else Colors.LINE)
+                }
+            }
+            box.addView(text(t.name + if (inUse) "  ·  I bruk" else "", 17f, true, if (inUse) Colors.ACCENT else Colors.FG))
+            box.addView(text("Tatt ${dateFmt.format(Date(t.time))} ved ${t.volumePct} % volum", 14f, color = Colors.MUTED))
+            val use = button(if (inUse) "Tilbakestill" else "Bruk", !inUse) {
+                p.activeTest = i; p.applyTest(t); profileChanged(true)
+                Toast.makeText(this, "«${t.name}» er i bruk.", Toast.LENGTH_SHORT).show()
+            }
+            val show = button("Vis tall") { showThresholds(t) }
+            val del = button("Slett") { confirmDelete(i) }
+            box.addView(row(use, show, del), lp(8))
+            testsBox.addView(box, lp(8))
+        }
+    }
+
+    private fun showThresholds(t: SavedTest) {
+        val sb = StringBuilder("Svakeste hørbare nivå (dB)\n\n")
+        sb.append(String.format(Locale.ROOT, "%-9s %8s %8s\n", "", "Venstre", "Høyre"))
+        FREQS.forEachIndexed { i, f ->
+            sb.append(String.format(Locale.ROOT, "%-9s %8.0f %8.0f\n", freqName(f), t.thrL[i], t.thrR[i]))
+        }
+        sb.append("\nLavere tall = bedre hørsel.")
+        AlertDialog.Builder(this).setTitle(t.name)
+            .setMessage(sb.toString())
+            .setPositiveButton("Lukk", null)
+            .show()
+            .findViewById<TextView>(android.R.id.message)?.typeface = Typeface.MONOSPACE
+    }
+
+    private fun confirmDelete(i: Int) {
+        val t = p.tests[i]
+        AlertDialog.Builder(this).setTitle("Slette «${t.name}»?")
+            .setMessage("Testen blir borte fra telefonen. Ta gjerne en sikkerhetskopi først.")
+            .setNegativeButton("Avbryt", null)
+            .setPositiveButton("Slett") { _, _ ->
+                p.tests.removeAt(i)
+                if (p.activeTest == i) p.activeTest = -1 else if (p.activeTest > i) p.activeTest--
+                profileChanged(true)
+            }.show()
+    }
+
+    private fun exportBackup() {
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Hørselsprofil – sikkerhetskopi ${dateFmt.format(Date())}")
+            putExtra(Intent.EXTRA_TEXT, p.exportJson())
+        }
+        startActivity(Intent.createChooser(send, "Lagre eller send sikkerhetskopien"))
+    }
+
+    private fun importBackup() {
+        val input = EditText(this).apply {
+            hint = "Lim inn teksten fra sikkerhetskopien her"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 4; maxLines = 10
+        }
+        val wrap = vbox().apply { setPadding(px(20), px(8), px(20), 0); addView(input) }
+        AlertDialog.Builder(this).setTitle("Hent sikkerhetskopi")
+            .setView(wrap)
+            .setNegativeButton("Avbryt", null)
+            .setPositiveButton("Hent") { _, _ ->
+                val n = p.importJson(input.text.toString())
+                if (n == null) {
+                    Toast.makeText(this, "Teksten ble ikke gjenkjent som en sikkerhetskopi.", Toast.LENGTH_LONG).show()
+                } else {
+                    profileChanged(true)
+                    Toast.makeText(this, "Hentet $n test(er).", Toast.LENGTH_LONG).show()
+                }
+            }.show()
     }
 
     private fun setEditEar(e: Int) {
@@ -330,12 +478,10 @@ class MainActivity : Activity() {
             val v = when (e) {
                 0 -> p.gL[i]; 1 -> p.gR[i]; else -> (p.gL[i] + p.gR[i]) / 2f
             }.roundToInt()
-            val name = if (f >= 1000) "${(f / 1000.0).toString().removeSuffix(".0").replace('.', ',')} kHz" else "$f Hz"
-            bandBox.addView(slider(name, 0, MAX_GAIN.toInt(), v, { "+$it dB" }) { nv ->
+            bandBox.addView(slider(freqName(f), 0, MAX_GAIN.toInt(), v, { "+$it dB" }) { nv ->
                 if (e != 1) p.gL[i] = nv.toFloat()
                 if (e != 0) p.gR[i] = nv.toFloat()
                 profileChanged(false)
-                chart.invalidate()
             }, lp(6))
         }
     }
@@ -347,7 +493,7 @@ class MainActivity : Activity() {
 
     private fun profileChanged(rebuild: Boolean) {
         p.save(this)
-        if (rebuild) refreshAll() else chart.invalidate()
+        if (rebuild) refreshAll() else { chart.invalidate(); adjust.invalidate() }
         handler.removeCallbacks(applyToService)
         handler.postDelayed(applyToService, 250)
     }
@@ -399,7 +545,7 @@ class MainActivity : Activity() {
         savedVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC)
         val idx = (max * 0.6).roundToInt()
         try { am.setStreamVolume(AudioManager.STREAM_MUSIC, idx, 0) } catch (_: Exception) {}
-        p.testVolumePct = (idx * 100.0 / max).roundToInt()
+        testVolumePct = (idx * 100.0 / max).roundToInt()
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         testSeq = listOf(1, 0).flatMap { ear -> testOrder.map { fi -> Pair(ear, fi) } }
@@ -417,9 +563,7 @@ class MainActivity : Activity() {
         tone.ear = ear
         tone.freq = FREQS[fi].toDouble()
         tone.levelDb = testLevel.toDouble()
-        val f = FREQS[fi]
-        val fname = if (f >= 1000) "${(f / 1000.0).toString().removeSuffix(".0").replace('.', ',')} kHz" else "$f Hz"
-        testNow.text = (if (ear == 0) "Venstre øre" else "Høyre øre") + "\n" + fname
+        testNow.text = (if (ear == 0) "Venstre øre" else "Høyre øre") + "\n" + freqName(FREQS[fi])
         testNow.setTextColor(if (ear == 0) Colors.LEFT else Colors.RIGHT)
         testProgress.text = "Tone ${testPos + 1} av ${testSeq.size}"
         updateLevelText()
@@ -454,10 +598,29 @@ class MainActivity : Activity() {
 
     private fun finishTest() {
         endTestCommon()
-        p.thrL = thrL.copyOf(); p.thrR = thrR.copyOf()
-        p.gainsFromThresholds()
-        profileChanged(true)
-        Toast.makeText(this, "Testen er lagret, og profilen er oppdatert.", Toast.LENGTH_LONG).show()
+        val l = thrL.copyOf(); val r = thrR.copyOf()
+        val (gl, gr) = SavedTest.gainsFrom(l, r)
+        val now = System.currentTimeMillis()
+        val input = EditText(this).apply {
+            setText("Test ${dateFmt.format(Date(now))}")
+            setSelectAllOnFocus(true)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        }
+        val wrap = vbox().apply { setPadding(px(20), px(8), px(20), 0); addView(input) }
+        fun store(name: String) {
+            val t = SavedTest(name.ifBlank { "Test ${dateFmt.format(Date(now))}" }, now, l, r, gl, gr, testVolumePct)
+            p.tests.add(t)
+            p.activeTest = p.tests.size - 1
+            p.applyTest(t)
+            profileChanged(true)
+            Toast.makeText(this, "Testen er lagret og tatt i bruk.", Toast.LENGTH_LONG).show()
+        }
+        AlertDialog.Builder(this).setTitle("Lagre hørselstesten")
+            .setMessage("Gi testen et navn, for eksempel «Med nye EarPods».")
+            .setView(wrap)
+            .setCancelable(false)
+            .setPositiveButton("Lagre") { _, _ -> store(input.text.toString()) }
+            .show()
     }
 
     private fun cancelTest() {

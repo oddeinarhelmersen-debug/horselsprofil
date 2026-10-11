@@ -116,8 +116,9 @@ class MicEngine(private val ctx: Context) {
 
     fun updateProfile(p: Profile) {
         val s = p.micStrength / 100.0
-        eqL.setTarget { f -> Profile.interp(p.gL, f) * s }
-        eqR.setTarget { f -> Profile.interp(p.gR, f) * s }
+        val l = p.eff(0); val r = p.eff(1)
+        eqL.setTarget { f -> Profile.interp(l, f) * s }
+        eqR.setTarget { f -> Profile.interp(r, f) * s }
         inGain = dbToLin(p.micGain.toFloat())
         outGain = dbToLin(p.micOut.toFloat())
         compOn = p.micComp
@@ -132,8 +133,10 @@ class MicEngine(private val ctx: Context) {
         val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val outDev = AudioDevs.headsetOut(am)
             ?: return "Fant ingen kablede ørepropper. Koble til EarPods først."
-        val inDev = AudioDevs.headsetIn(am)
-            ?: return "Fant ikke mikrofonen på ledningen. Sjekk at pluggen sitter helt inne."
+        val inDev = if (p.micSource == 1) AudioDevs.phoneMic(am)
+            ?: return "Fant ikke mikrofonen i telefonen."
+        else AudioDevs.headsetIn(am)
+            ?: return "Fant ikke mikrofonen på ledningen. Sjekk at pluggen sitter helt inne, eller velg mikrofonen i telefonen."
         updateProfile(p)
 
         val burst = am.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)?.toIntOrNull() ?: 192
@@ -351,10 +354,15 @@ class MusicEq(private val ctx: Context) {
     private fun bandGains(p: Profile): Pair<Array<FloatArray>, Float> {
         val s = p.musicStrength / 100.0
         val g = Array(2) { ch ->
-            FloatArray(CUTOFFS.size) { k -> (Profile.interp(p.gains(ch), center(k)) * s).toFloat() }
+            val e = p.eff(ch)
+            FloatArray(CUTOFFS.size) { k ->
+                val f = center(k)
+                (Profile.interp(e, f) * s + p.musicBass * Profile.bassWeight(f)).toFloat()
+            }
         }
         val maxG = max(g[0].maxOrNull() ?: 0f, g[1].maxOrNull() ?: 0f)
-        val headroom = -minOf(12f, maxG * 0.5f)
+        // Litt demping gir plass til forsterkningen; begrenseren tar resten.
+        val headroom = -minOf(8f, maxG * 0.35f)
         return Pair(g, headroom)
     }
 
