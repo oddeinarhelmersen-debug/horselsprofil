@@ -131,7 +131,8 @@ class MainActivity : Activity() {
             meterIn.progress = levelPct(HearingService.inLevel)
             meterOut.progress = levelPct(HearingService.outLevel)
             latencyText.text = if (running && HearingService.latencyMs > 0)
-                "Forsinkelse i appen: ca. ${HearingService.latencyMs} ms (pluss litt i telefonens lydsystem)" else ""
+                "Forsinkelse i appen: ca. ${HearingService.latencyMs} ms · Lydbrudd: ${HearingService.underruns}" +
+                    (if (HearingService.underruns > 0) " (bufferen er økt automatisk)" else "") else ""
             musicStatus.text = "Status: " + HearingService.musicStatus
             handler.postDelayed(this, 200)
         }
@@ -323,7 +324,7 @@ class MainActivity : Activity() {
         val mus = card("Musikk og annen lyd", "Trinn 3")
         mus.addView(text("Legger lydprofilen på det du spiller av: YouTube Music, Spotify, podkaster, radio og video.", 17f, color = Colors.MUTED), lp(6))
         mus.addView(switch("Bruk lydprofilen på musikk", p.musicOn) { b -> p.musicOn = b; profileChanged(false) }, lp(10))
-        mus.addView(slider("Styrke på profilen", 0, 100, p.musicStrength, { "$it %" }) { v -> p.musicStrength = v; profileChanged(false) }, lp(10))
+        mus.addView(slider("Styrke på profilen", 0, 200, p.musicStrength, { "$it %" }) { v -> p.musicStrength = v; profileChanged(false) }, lp(10))
         mus.addView(text("Musikk spilles vanligvis sterkere enn tale, og da trengs mindre forsterkning. Låter det skarpt eller tynt, skru ned styrken.", 14f, color = Colors.MUTED), lp(2))
         mus.addView(slider("Bass", 0, 12, p.musicBass, { if (it > 0) "+$it dB" else "0 dB" }) { v -> p.musicBass = v; profileChanged(false) }, lp(10))
         mus.addView(text("Hvordan profilen kobles på", 17f, true), lp(16))
@@ -357,7 +358,8 @@ class MainActivity : Activity() {
         val sdb: (Int) -> String = { if (it > 0) "+$it dB" else "$it dB" }
         mic.addView(slider("Mikrofonfølsomhet", -12, 24, p.micGain, sdb) { v -> p.micGain = v; profileChanged(false) }, lp(12))
         mic.addView(slider("Volum ut", -30, 12, p.micOut, sdb) { v -> p.micOut = v; profileChanged(false) }, lp(8))
-        mic.addView(slider("Styrke på profilen", 0, 100, p.micStrength, { "$it %" }) { v -> p.micStrength = v; profileChanged(false) }, lp(8))
+        mic.addView(slider("Styrke på profilen", 0, 200, p.micStrength, { "$it %" }) { v -> p.micStrength = v; profileChanged(false) }, lp(8))
+        mic.addView(text("Over 100 % forsterker mer enn testen tilsier. Gå opp gradvis, og senk igjen hvis det suser eller piper.", 14f, color = Colors.MUTED), lp(2))
         mic.addView(switch("Demp brå, sterke lyder", p.micComp) { b -> p.micComp = b; profileChanged(false) }, lp(8))
         mic.addView(switch("Demp sus og bakgrunnsstøy", p.micNs) { b -> p.micNs = b; profileChanged(false) }, lp(4))
         mic.addView(text("Hvis det piper eller uler: senk «Volum ut», eller bytt til mikrofonen i telefonen.", 14f, color = Colors.WARN), lp(10))

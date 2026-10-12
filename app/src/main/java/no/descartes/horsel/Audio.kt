@@ -111,6 +111,7 @@ class MicEngine(private val ctx: Context) {
     @Volatile var inLevel = 0f
     @Volatile var outLevel = 0f
     @Volatile var latencyMs = 0
+    @Volatile var underruns = 0
 
     val isRunning get() = running
 
@@ -175,7 +176,9 @@ class MicEngine(private val ctx: Context) {
             return "Kunne ikke åpne lydutgangen: ${e.message}"
         }
         track.setPreferredDevice(outDev)
-        try { track.bufferSizeInFrames = n * 2 } catch (_: Exception) {}
+        // Start med litt romsligere buffer; den vokser selv hvis lyden likevel hakker.
+        try { track.bufferSizeInFrames = n * 4 } catch (_: Exception) {}
+        underruns = 0
 
         running = true
         thread = Thread({ loop(rec, track, n) }, "mic-loop").also { it.start() }
@@ -195,11 +198,15 @@ class MicEngine(private val ctx: Context) {
         val out = FloatArray(n * 2)
 
         // Tidskonstanter
-        val aC = exp(-1.0 / (FS * 0.005)).toFloat(); val rC = exp(-1.0 / (FS * 0.15)).toFloat()
+        // Roligere kompressor: 20 ms inn, 300 ms ut, så s-lyder ikke får volumet til å pulsere.
+        val aC = exp(-1.0 / (FS * 0.020)).toFloat(); val rC = exp(-1.0 / (FS * 0.30)).toFloat()
         val rLim = exp(-1.0 / (FS * 0.05)).toFloat()
         val aN = exp(-1.0 / (FS * 0.01)).toFloat(); val rN = exp(-1.0 / (FS * 0.2)).toFloat()
         var envC = 0f; var envLim = 0f; var envN = 0f; var gN = 1f
-        val compThr = -30f; val compRatio = 3f
+        val compThr = -26f; val compRatio = 2.5f
+        var lastUnderruns = 0
+        var blocks = 0
+        val maxBuf = n * 16
         val limThr = 0.89f // −1 dBFS
         val gateThr = 0.001f // −60 dBFS
 
@@ -207,7 +214,8 @@ class MicEngine(private val ctx: Context) {
             rec.startRecording()
             track.play()
             track.write(FloatArray(n * 2), 0, n * 2, AudioTrack.WRITE_BLOCKING)
-            latencyMs = ((track.bufferSizeInFrames + 2 * n) * 1000L / FS).toInt() + 10
+            fun updLatency() { latencyMs = ((track.bufferSizeInFrames + 2 * n) * 1000L / FS).toInt() + 10 }
+            updLatency()
 
             while (running) {
                 val r = rec.read(inBuf, 0, n, AudioRecord.READ_BLOCKING)
@@ -254,6 +262,20 @@ class MicEngine(private val ctx: Context) {
                 inLevel = sqrt(sumIn / r)
                 outLevel = sqrt(sumOut / r)
                 track.write(out, 0, r * 2, AudioTrack.WRITE_BLOCKING)
+
+                // Hver ~0,1 s: har utgangen gått tom siden sist? Gi den i så fall mer buffer.
+                if (++blocks % 25 == 0) {
+                    val u = track.underrunCount
+                    if (u > lastUnderruns) {
+                        underruns += u - lastUnderruns
+                        lastUnderruns = u
+                        val cur = track.bufferSizeInFrames
+                        if (cur < maxBuf) {
+                            try { track.bufferSizeInFrames = minOf(maxBuf, cur + n) } catch (_: Exception) {}
+                            updLatency()
+                        }
+                    }
+                }
             }
         } catch (_: Exception) {
         } finally {
@@ -357,7 +379,7 @@ class MusicEq(private val ctx: Context) {
             val e = p.eff(ch)
             FloatArray(CUTOFFS.size) { k ->
                 val f = center(k)
-                (Profile.interp(e, f) * s + p.musicBass * Profile.bassWeight(f)).toFloat()
+                (Profile.interp(e, f) * s + p.musicBass * Profile.bassWeight(f)).coerceIn(-15.0, 36.0).toFloat()
             }
         }
         val maxG = max(g[0].maxOrNull() ?: 0f, g[1].maxOrNull() ?: 0f)

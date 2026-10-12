@@ -39,6 +39,7 @@ class HearingService : Service() {
         @Volatile var inLevel = 0f
         @Volatile var outLevel = 0f
         @Volatile var latencyMs = 0
+        @Volatile var underruns = 0
 
         fun send(ctx: Context, action: String, foreground: Boolean) {
             val i = Intent(ctx, HearingService::class.java).setAction(action).putExtra(EXTRA_FG, foreground)
@@ -60,6 +61,7 @@ class HearingService : Service() {
             inLevel = mic.inLevel
             outLevel = mic.outLevel
             latencyMs = mic.latencyMs
+            underruns = mic.underruns
             if (micRunning && !mic.isRunning) {
                 micRunning = false
                 micStatus = "Lyttingen stoppet uventet."
