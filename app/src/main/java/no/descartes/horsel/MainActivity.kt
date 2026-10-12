@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -365,6 +367,22 @@ class MainActivity : Activity() {
         mic.addView(text("Hvis det piper eller uler: senk «Volum ut», eller bytt til mikrofonen i telefonen.", 14f, color = Colors.WARN), lp(10))
         root.addView(mic, lp(14))
 
+        /* ---------- Bruk profilen andre steder ---------- */
+        val other = card("Bruk profilen på PC-en")
+        other.addView(text("Lager en ferdig innstilling for gratisprogrammet Equalizer APO på Windows. Den bruker samme styrke og bass som under «Musikk og annen lyd».", 17f, color = Colors.MUTED), lp(6))
+        other.addView(row(
+            button("Send til PC", true) { exportApo(send = true) },
+            button("Kopier tekst") { exportApo(send = false) }
+        ), lp(12))
+        other.addView(text("«Send til PC» lar deg sende teksten med e-post eller lagre den i Disk. Lim den inn i filen config.txt i mappen C:\\Program Files\\EqualizerAPO\\config. Oppsettet er forklart øverst i teksten.", 14f, color = Colors.MUTED), lp(6))
+        root.addView(other, lp(14))
+
+        val ver = try {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+        } catch (_: Exception) { "?" }
+        root.addView(text("Hørselsprofil versjon $ver", 14f, color = Colors.MUTED).apply { gravity = Gravity.CENTER }, lp(20))
+
         return ScrollView(this).apply {
             setBackgroundColor(Colors.BG)
             addView(root)
@@ -449,6 +467,22 @@ class MainActivity : Activity() {
             putExtra(Intent.EXTRA_TEXT, p.exportJson())
         }
         startActivity(Intent.createChooser(send, "Lagre eller send sikkerhetskopien"))
+    }
+
+    private fun exportApo(send: Boolean) {
+        val txt = ApoExport.build(p)
+        if (send) {
+            val i = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "Hørselsprofil – Equalizer APO")
+                putExtra(Intent.EXTRA_TEXT, txt)
+            }
+            startActivity(Intent.createChooser(i, "Send innstillingen til PC-en"))
+        } else {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("Equalizer APO", txt))
+            Toast.makeText(this, "Teksten er kopiert.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun importBackup() {

@@ -11,8 +11,8 @@ android {
         applicationId = "no.descartes.horsel"
         minSdk = 28
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
 
     // Fast signeringsnøkkel, så nye versjoner kan installeres over den gamle uten å miste testene.

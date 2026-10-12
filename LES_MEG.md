@@ -57,3 +57,10 @@ Appen tester hørselen på hvert øre med EarPods i ørene og lagrer en lydprofi
 - **Lyden blir litt forsinket ved mikrofonlytting.** På Pixel 6 er forsinkelsen typisk 20–40 ms. Siden EarPods sitter løst, hører du også den direkte lyden. Din egen stemme kan derfor låte litt hul.
 - **Om «all lyd» virker, avhenger av Android-versjonen.** Metoden for å påvirke all lyd er offisielt foreldet, men virker fortsatt på mange telefoner. Det er derfor reservemetoden finnes.
 - **Dette er ikke et medisinsk høreapparat.** Merker du at hørselen svekkes, er en ordentlig hørselstest via fastlegen lurt.
+
+## Bruke profilen på PC-en (Windows)
+
+1. Installer gratisprogrammet **Equalizer APO** (sourceforge.net/projects/equalizerapo). Under installasjonen huker du av for lydenheten PC-en spiller gjennom, for eksempel TV-en via HDMI eller DisplayPort. Start PC-en på nytt.
+2. I appen trykker du **Send til PC** under «Bruk profilen på PC-en», og sender teksten til deg selv.
+3. Åpne `C:\Program Files\EqualizerAPO\config\config.txt` i Notisblokk som administrator. Erstatt innholdet med teksten, og lagre. Endringen virker med en gang.
+4. Blokk A (samme kurve på begge kanaler) er på fra start, og den passer for høyttalere. For hodetelefoner bytter du til blokk B slik det står i teksten.
